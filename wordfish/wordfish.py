@@ -25,12 +25,15 @@ class WordfishResults:
 
     def __init__(self, documents: np.ndarray, words: np.ndarray,
                  estimation_info: Dict, doc_names: List[str],
-                 word_names: List[str]):
+                 word_names: List[str], ci_documents: Optional[np.ndarray] = None,
+                 ci_words: Optional[np.ndarray] = None):
         self.documents = documents  # omega (positions) and alpha (fixed effects)
         self.words = words  # beta (weights) and psi (fixed effects)
         self.estimation_info = estimation_info
         self.doc_names = doc_names
         self.word_names = word_names
+        self.ci_documents = ci_documents  # confidence intervals for documents
+        self.ci_words = ci_words  # confidence intervals for words
 
     def __repr__(self):
         return f"WordfishResults(documents={self.documents.shape[0]}, words={self.words.shape[0]})"
@@ -76,7 +79,9 @@ class Wordfish:
     def fit(self, word_doc_matrix: Union[np.ndarray, pd.DataFrame],
             dir_docs: Tuple[int, int] = (0, 1),
             doc_names: Optional[List[str]] = None,
-            word_names: Optional[List[str]] = None) -> WordfishResults:
+            word_names: Optional[List[str]] = None,
+            bootstrap: bool = False,
+            n_bootstrap: int = 500) -> WordfishResults:
         """
         Fit WORDFISH model to word-document matrix.
 
@@ -90,6 +95,10 @@ class Wordfish:
             Names for documents (rows)
         word_names : list of str, optional
             Names for words (columns)
+        bootstrap : bool, default=False
+            Whether to run parametric bootstrap for confidence intervals
+        n_bootstrap : int, default=500
+            Number of bootstrap simulations
 
         Returns
         -------
@@ -154,12 +163,22 @@ class Wordfish:
             'final_diff': params.get('diffparam_last', None)
         }
 
+        # Run bootstrap if requested
+        ci_documents = None
+        ci_words = None
+        if bootstrap:
+            ci_documents, ci_words = self._parametric_bootstrap(
+                dta, output_documents, output_words, dir_docs, n_bootstrap
+            )
+
         return WordfishResults(
             documents=output_documents,
             words=output_words,
             estimation_info=estimation_info,
             doc_names=doc_names,
-            word_names=word_names
+            word_names=word_names,
+            ci_documents=ci_documents,
+            ci_words=ci_words
         )
 
     def _get_starting_values(self, dta: np.ndarray) -> Dict:
@@ -337,6 +356,111 @@ class Wordfish:
         params['iter'] = iteration - 1
         return params
 
+    def _parametric_bootstrap(self, dta: np.ndarray, output_documents: np.ndarray,
+                             output_words: np.ndarray, dir_docs: Tuple[int, int],
+                             n_bootstrap: int) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Run parametric bootstrap to estimate confidence intervals.
+
+        Parameters
+        ----------
+        dta : np.ndarray
+            Original data matrix
+        output_documents : np.ndarray
+            Estimated document parameters (omega, alpha)
+        output_words : np.ndarray
+            Estimated word parameters (beta, psi)
+        dir_docs : tuple of int
+            Two document indices for global identification
+        n_bootstrap : int
+            Number of bootstrap simulations
+
+        Returns
+        -------
+        ci_documents : np.ndarray
+            Confidence intervals for documents (LB, UB, Omega ML, Omega Sim Mean)
+        ci_words : np.ndarray
+            Confidence intervals for words (LB, UB, Beta ML, Beta Sim Mean)
+        """
+        if self.verbose:
+            print("=" * 40)
+            print("STARTING PARAMETRIC BOOTSTRAP")
+            print("=" * 40)
+            print(f"Now running {n_bootstrap} bootstrap trials.")
+            print("=" * 40)
+            print("Simulation ", end="", flush=True)
+
+        n_docs, n_words = dta.shape
+
+        # Extract parameters
+        omega = output_documents[:, 0]
+        alpha = output_documents[:, 1]
+        beta = output_words[:, 0]
+        psi = output_words[:, 1]
+
+        # Storage for bootstrap results
+        bootstrap_omega = np.zeros((n_docs, n_bootstrap))
+        bootstrap_beta = np.zeros((n_words, n_bootstrap))
+
+        # Run bootstrap simulations
+        for k in range(n_bootstrap):
+            if self.verbose:
+                print(f"{k+1}...", end="", flush=True)
+                if (k + 1) % 10 == 0:
+                    print()
+
+            # Generate new data from estimated parameters
+            dta_sim = np.zeros((n_docs, n_words))
+            for i in range(n_docs):
+                lambda_i = np.exp(psi + alpha[i] + beta * omega[i])
+                dta_sim[i, :] = np.random.poisson(lambda_i)
+
+            # Generate perturbed starting values
+            alpha_start = alpha + np.random.normal(0, np.std(alpha) / 2, n_docs)
+            omega_start = omega + np.random.normal(0, np.std(omega) / 2, n_docs)
+            psi_start = psi + np.random.normal(0, np.std(psi) / 2, n_words)
+            beta_start = beta + np.random.normal(0, np.std(beta) / 2, n_words)
+
+            params = {
+                'alpha': alpha_start,
+                'omega': omega_start,
+                'psi': psi_start,
+                'beta': beta_start,
+                'iter': 0,
+                'maxllik': [],
+                'diffllik': []
+            }
+
+            # Run estimation on simulated data (with verbose=False)
+            verbose_backup = self.verbose
+            self.verbose = False
+            params = self._em_algorithm(dta_sim, params, dir_docs)
+            self.verbose = verbose_backup
+
+            # Store results
+            bootstrap_omega[:, k] = params['omega']
+            bootstrap_beta[:, k] = params['beta']
+
+        if self.verbose:
+            print("\n" + "=" * 40)
+
+        # Calculate confidence intervals
+        ci_documents = np.zeros((n_docs, 4))
+        for i in range(n_docs):
+            ci_documents[i, 0] = np.percentile(bootstrap_omega[i, :], 2.5)  # Lower bound
+            ci_documents[i, 1] = np.percentile(bootstrap_omega[i, :], 97.5)  # Upper bound
+            ci_documents[i, 2] = omega[i]  # ML estimate
+            ci_documents[i, 3] = np.mean(bootstrap_omega[i, :])  # Simulation mean
+
+        ci_words = np.zeros((n_words, 4))
+        for j in range(n_words):
+            ci_words[j, 0] = np.percentile(bootstrap_beta[j, :], 2.5)  # Lower bound
+            ci_words[j, 1] = np.percentile(bootstrap_beta[j, :], 97.5)  # Upper bound
+            ci_words[j, 2] = beta[j]  # ML estimate
+            ci_words[j, 3] = np.mean(bootstrap_beta[j, :])  # Simulation mean
+
+        return ci_documents, ci_words
+
 
 def wordfish(word_doc_matrix: Union[np.ndarray, pd.DataFrame],
             tol: float = 1e-7,
@@ -344,7 +468,9 @@ def wordfish(word_doc_matrix: Union[np.ndarray, pd.DataFrame],
             dir_docs: Tuple[int, int] = (0, 1),
             verbose: bool = True,
             doc_names: Optional[List[str]] = None,
-            word_names: Optional[List[str]] = None) -> WordfishResults:
+            word_names: Optional[List[str]] = None,
+            bootstrap: bool = False,
+            n_bootstrap: int = 500) -> WordfishResults:
     """
     Convenient function interface for WORDFISH estimation.
 
@@ -364,6 +490,10 @@ def wordfish(word_doc_matrix: Union[np.ndarray, pd.DataFrame],
         Names for documents
     word_names : list of str, optional
         Names for words
+    bootstrap : bool, default=False
+        Whether to run parametric bootstrap for confidence intervals
+    n_bootstrap : int, default=500
+        Number of bootstrap simulations
 
     Returns
     -------
@@ -372,7 +502,8 @@ def wordfish(word_doc_matrix: Union[np.ndarray, pd.DataFrame],
     """
     model = Wordfish(tol=tol, sigma=sigma, verbose=verbose)
     return model.fit(word_doc_matrix, dir_docs=dir_docs,
-                    doc_names=doc_names, word_names=word_names)
+                    doc_names=doc_names, word_names=word_names,
+                    bootstrap=bootstrap, n_bootstrap=n_bootstrap)
 
 
 if __name__ == "__main__":
