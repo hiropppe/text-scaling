@@ -195,7 +195,5 @@ node_modules
 !package-lock.json
 !tsconfig.json
 
-/data
-
 .jupyter/*
 !.jupyter/jupyter_lab_config.py
