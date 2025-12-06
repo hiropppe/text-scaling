@@ -14,6 +14,7 @@ dependencies = [
     "jupysql>=0.11.1",
     "jupyterlab>=4.4.2",
     "matplotlib>=3.10.3",
+    "numpyro>=0.19.0",
     "plotly>=6.3.0",
     "plotnine>=0.14.5",
     "pymc>=5.22.0",
