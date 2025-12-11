@@ -8,6 +8,6 @@
 
 Running Jupyter Lab in a Docker Container.
 ```bash
-docker-compose build
-docker-compose up
+docker compose build
+docker compose up
 ```

@@ -197,3 +197,10 @@ node_modules
 
 .jupyter/*
 !.jupyter/jupyter_lab_config.py
+
+!data/YoungSoroka.2012.Rdata
+data/*.csv
+
+.Trash-0/
+
+__marimo__
