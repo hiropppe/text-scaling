@@ -178,7 +178,8 @@ def _(BoW, minimize, np, p_v, phi, vocab):
                 llik = np.sum(BoW[d, :] * log_probs)
 
                 # 事前分布の対数： θ ~ N(0, 1)
-                # log p(θ) = -0.5 * θ^2 + const
+                # log p(θ) = -0.5 * log (2π) - 0.5 * θ^2
+                #          = -0.5 * θ^2 + const
                 prior = -0.5 * theta_d**2
 
                 # 負の対数事後確率（最小化するため符号反転）
@@ -203,6 +204,25 @@ def _(BoW, minimize, np, p_v, phi, vocab):
 def _(df, pearsonr, theta_estimated):
     correlation, p_value = pearsonr(theta_estimated, df["ys_scale"].to_list())
     print(f"相関係数: {correlation}, p値: {p_value}")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 補講
+    標準正規分布の確率密度関数
+
+    $$p(\theta) = \frac{1}{\sqrt{2\pi}} \exp\left(-\frac{\theta^2}{2}\right)$$
+
+    対数を取る
+
+    $$\log p(\theta) = \log\left(\frac{1}{\sqrt{2\pi}}\right) + \log\left(\exp\left(-\frac{\theta^2}{2}\right)\right)$$
+
+    $$= -\frac{1}{2}\log(2\pi) - \frac{\theta^2}{2}$$
+
+    $$= -\frac{1}{2}\theta^2 + \text{const}$$
+    """)
     return
 
 
