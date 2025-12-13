@@ -208,6 +208,47 @@ def _(df, pearsonr, theta_estimated):
 
 
 @app.cell
+def _(df, np, theta_estimated):
+    import matplotlib.pyplot as plt
+
+    # 人手アノテーションのスケールを取得
+    ys_scale = df["ys_scale"].values
+
+    # 1. 散布図：推定θ vs 人手スケール
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+
+    # 散布図
+    axes[0].scatter(ys_scale, theta_estimated, alpha=0.5)
+    axes[0].set_xlabel("Human Annotation (ys_scale)")
+    axes[0].set_ylabel("Estimated θ")
+    axes[0].set_title("Estimated θ vs Human Scale")
+
+    # 相関係数を表示
+    corr = np.corrcoef(ys_scale, theta_estimated)[0, 1]
+    axes[0].text(0.05, 0.95, f"r = {corr:.3f}", transform=axes[0].transAxes,
+               fontsize=12, verticalalignment='top')
+
+    # 2. Boxplot：スケール別のθ分布
+    scale_groups = [theta_estimated[ys_scale == s] for s in [1, 2, 3, 4, 5]]
+    axes[1].boxplot(scale_groups, labels=["1\n(Neg)", "2", "3\n(Neu)", "4", "5\n(Pos)"])
+    axes[1].set_xlabel("Human Scale")
+    axes[1].set_ylabel("Estimated θ")
+    axes[1].set_title("θ Distribution by Human Scale")
+
+    # 3. ヒストグラム：θの分布
+    axes[2].hist(theta_estimated, bins=30, edgecolor='black', alpha=0.7)
+    axes[2].set_xlabel("Estimated θ")
+    axes[2].set_ylabel("Frequency")
+    axes[2].set_title("Distribution of Estimated θ")
+    axes[2].axvline(x=0, color='red', linestyle='--', label='θ=0')
+    axes[2].legend()
+
+    plt.tight_layout()
+    plt.show()
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     ## 補講
