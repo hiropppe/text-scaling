@@ -200,6 +200,8 @@ node_modules
 
 !data/YoungSoroka.2012.Rdata
 data/*.csv
+data/*.model
+data/*.npy
 
 .Trash-0/
 
