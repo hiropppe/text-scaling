@@ -12,6 +12,7 @@ def _():
 
 @app.cell
 def _():
+    import re
     import numpy as np
     import pandas as pd
     import scipy as sc
@@ -21,7 +22,8 @@ def _():
     from scipy.stats import norm, uniform, pearsonr
     from scipy.optimize import minimize
     from sklearn.feature_extraction.text import CountVectorizer
-    return CountVectorizer, KeyedVectors, minimize, np, pd, pearsonr
+    from tqdm import tqdm
+    return CountVectorizer, KeyedVectors, minimize, np, pd, pearsonr, re, tqdm
 
 
 @app.cell
@@ -54,22 +56,24 @@ def _(pd):
 
 
 @app.cell
-def _(df, mo):
+def _(df, re, tqdm):
     # BoW を CountVectorizer で調整したいので BoW DataFrame から生トークン列を復元
+
     def restore_tokens(df):
         vocab = df.columns[4:]
         bow = df.iloc[:, 4:]
         docs = []
-        with mo.status.progress_bar(total=len(df)) as bar:
+        with tqdm(total=len(df)) as bar:
             for row in bow.iterrows():
                 doc = " ".join([" ".join(int(row[1].iloc[i])*[v]) for i, v in enumerate(vocab)])
+                doc = re.sub(r"\s+", " ", doc.strip())
                 docs.append(doc)
                 bar.update()
         return docs
 
     # トークン列を復元
     corpus = restore_tokens(df)
-    corpus[:10]
+    corpus[:3]
     return (corpus,)
 
 
@@ -109,8 +113,8 @@ def _(CountVectorizer, corpus, np):
 @app.cell
 def _(KeyedVectors):
     #wv_model = api.load("glove-wiki-gigaword-300")
-    #wv_model.save("./data/glove-wiki-gigaword-300.kv")
-    wv_model = KeyedVectors.load("./data/glove-wiki-gigaword-300.kv")
+    #wv_model.save("./data/glove-wiki-gigaword-300.model")
+    wv_model = KeyedVectors.load("./data/glove-wiki-gigaword-300.model")
     return (wv_model,)
 
 
@@ -131,7 +135,7 @@ def _(np, vocab, wv_model):
             beta = beta/np.linalg.norm(beta)
             return beta
 
-        beta = calc_beta(pos_words, neg_words)  
+        beta = calc_beta(pos_words, neg_words)
         phi = np.array([beta @ normed_vec[key2index[v]] if v in key2index else 0 for v in vocab])
         return phi
 
