@@ -79,9 +79,9 @@ RUN apt-get install -y --no-install-recommends npm nodejs \
     && n stable \
     && apt purge -y npm nodejs
 
-RUN git clone -b v1.8.21 --depth 1 https://github.com/quarto-dev/quarto-cli.git \
-    && cd quarto-cli \
-    && ./configure.sh
+#RUN git clone -b v1.8.21 --depth 1 https://github.com/quarto-dev/quarto-cli.git \
+#    && cd quarto-cli \
+#    && ./configure.sh
 
 ARG USERNAME=take
 ARG USER_UID=1000
